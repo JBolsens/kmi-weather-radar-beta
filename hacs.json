@@ -1,6 +1,6 @@
 {
-  "name": "KMI Radar Card",
+  "name": "KMI Weather Radar Beta",
   "render_readme": true,
-  "filename": "kmi-radar-card.js",
+  "filename": "kmi-weather-radar-beta.js",
   "country": ["BE"]
 }
