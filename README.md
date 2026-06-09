@@ -2,11 +2,12 @@
 
 Animated Home Assistant dashboard card for the Belgian KMI/RMI beta precipitation radar.
 
-This project is a HACS custom **integration** that provides:
+This HACS custom **integration** provides:
 
-- a small Home Assistant backend proxy for KMI radar data, avoiding browser CORS issues;
-- a Lovelace dashboard card served by the integration;
-- animated radar frames, play/pause, rewind, timeline slider, local Belgium time and attribution.
+- a Home Assistant backend proxy for KMI radar data, avoiding browser CORS issues;
+- a bundled Lovelace dashboard card served by the integration;
+- automatic Lovelace resource registration in storage-mode dashboards;
+- animated radar frames, play/pause, rewind, timeline slider, local Belgian time and attribution.
 
 ## Installation with HACS
 
@@ -15,16 +16,18 @@ This project is a HACS custom **integration** that provides:
 3. Install **KMI Weather Radar Beta**.
 4. Restart Home Assistant.
 5. Add the integration via **Settings → Devices & services → Add integration → KMI Weather Radar Beta**.
-6. Add the dashboard resource manually:
+
+The integration tries to automatically add this Lovelace resource:
 
 ```text
-/kmi_weather_radar_beta/kmi-weather-radar-beta.js
+/kmi_weather_radar_beta/kmi-weather-radar-beta.js?v=<version>
 ```
 
-Resource type:
+If you use YAML-mode dashboards, or if automatic registration is unavailable in your Home Assistant setup, add the resource manually:
 
 ```text
-JavaScript module
+URL: /kmi_weather_radar_beta/kmi-weather-radar-beta.js
+Type: JavaScript module
 ```
 
 ## Dashboard YAML
@@ -43,47 +46,21 @@ zoom: 8
 ```yaml
 type: custom:kmi-weather-radar-beta
 height: 500px
-center: [51.0, 4.5]
+center:
+  - 51.0
+  - 4.5
 zoom: 8
 max_frames: 40
 frame_interval: 700
 refresh_interval: 120000
 ```
 
-- `height`: CSS height of the card.
-- `center`: initial map center as `[lat, lon]`.
-- `zoom`: initial Leaflet zoom.
-- `max_frames`: number of announced radar frames to use.
-- `frame_interval`: animation speed in milliseconds.
-- `refresh_interval`: how often the card checks for new radar frames, in milliseconds.
+## Notes
 
-## Data and attribution
+This project uses public KMI/RMI beta radar data and renders it locally in Home Assistant. It is not affiliated with or endorsed by KMI/RMI.
 
-Radar data and base map tiles are loaded from meteo.be/KMI/RMI. The map displays attribution for OpenStreetMap, KMI and Leaflet.
+Attribution is shown on the card for OpenStreetMap, KMI and Leaflet.
 
-This project is unofficial and not affiliated with KMI/RMI.
+## Brand icon
 
-## Troubleshooting
-
-### Card says `fout laden`
-
-Check that:
-
-- the integration has been added through Devices & services;
-- the dashboard resource is added as JavaScript module;
-- Home Assistant can reach `www.meteo.be` from the host;
-- the browser console and Home Assistant logs do not show blocked requests.
-
-### Card is installed but not found
-
-Make sure the resource URL is exactly:
-
-```text
-/kmi_weather_radar_beta/kmi-weather-radar-beta.js
-```
-
-and that the card type is:
-
-```yaml
-type: custom:kmi-weather-radar-beta
-```
+The included icon is an original radar/weather icon made for this project. It is not the official KMI logo.

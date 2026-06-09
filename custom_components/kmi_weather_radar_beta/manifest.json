@@ -1,12 +1,18 @@
 {
   "domain": "kmi_weather_radar_beta",
   "name": "KMI Weather Radar Beta",
-  "codeowners": ["@JBolsens"],
+  "codeowners": [
+    "@JBolsens"
+  ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": [
+    "frontend",
+    "http",
+    "lovelace"
+  ],
   "documentation": "https://github.com/JBolsens/kmi-weather-radar-beta",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/JBolsens/kmi-weather-radar-beta/issues",
   "requirements": [],
-  "version": "0.1.1"
+  "version": "0.1.2"
 }

@@ -10,8 +10,9 @@ from aiohttp import web
 
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
     ANIMATION_FILES_URL,
@@ -19,6 +20,9 @@ from .const import (
     CACHE_TTL_SECONDS,
     DOMAIN,
     MAX_FRAMES_DEFAULT,
+    CARD_FILENAME,
+    CARD_RESOURCE_URL,
+    CARD_URL_PATH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +51,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _register_http_views_once(hass)
+    await _async_register_lovelace_resource(hass)
     return True
 
 
@@ -63,6 +68,63 @@ def _register_http_views_once(hass: HomeAssistant) -> None:
     hass.http.register_view(KmiRadarCardView)
     store["views_registered"] = True
 
+
+
+async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
+    """Best-effort registration of the dashboard resource.
+
+    This works for the default Lovelace storage mode. If the user manages
+    Lovelace resources in YAML mode, Home Assistant does not expose a writable
+    resources collection, so the README still documents manual registration.
+    """
+
+    async def _try_register(_now: Any | None = None) -> None:
+        try:
+            lovelace_data = hass.data.get("lovelace")
+            if lovelace_data is None:
+                async_call_later(hass, 5, _try_register)
+                return
+
+            resources = getattr(lovelace_data, "resources", None)
+            if resources is None:
+                return
+
+            loaded = getattr(resources, "loaded", True)
+            if not loaded:
+                async_call_later(hass, 5, _try_register)
+                return
+
+            async_items = getattr(resources, "async_items", None)
+            async_create_item = getattr(resources, "async_create_item", None)
+            async_update_item = getattr(resources, "async_update_item", None)
+
+            if async_items is None or async_create_item is None:
+                _LOGGER.info(
+                    "Lovelace resources are not writable; add %s manually as JavaScript module",
+                    CARD_RESOURCE_URL,
+                )
+                return
+
+            items = async_items()
+            resource_base = CARD_URL_PATH
+
+            for item in items:
+                url = item.get("url", "")
+                if url.split("?", 1)[0] == resource_base:
+                    if url != CARD_RESOURCE_URL and async_update_item is not None:
+                        await async_update_item(item["id"], {"url": CARD_RESOURCE_URL, "res_type": "module"})
+                        _LOGGER.info("Updated Lovelace resource for KMI Weather Radar Beta")
+                    return
+
+            await async_create_item({"url": CARD_RESOURCE_URL, "res_type": "module"})
+            _LOGGER.info("Registered Lovelace resource for KMI Weather Radar Beta")
+        except Exception:  # pragma: no cover - best effort only
+            _LOGGER.exception(
+                "Could not automatically register Lovelace resource. Add %s manually as JavaScript module.",
+                CARD_RESOURCE_URL,
+            )
+
+    await _try_register()
 
 async def _fetch_files(hass: HomeAssistant, max_frames: int = MAX_FRAMES_DEFAULT) -> list[str]:
     store = _store(hass)
@@ -122,7 +184,7 @@ async def _fetch_frame(hass: HomeAssistant, filename: str) -> bytes:
 class KmiRadarFilesView(HomeAssistantView):
     url = "/api/kmi_weather_radar_beta/files"
     name = "api:kmi_weather_radar_beta:files"
-    requires_auth = True
+    requires_auth = False
 
     async def get(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
@@ -143,7 +205,7 @@ class KmiRadarFilesView(HomeAssistantView):
 class KmiRadarFrameView(HomeAssistantView):
     url = "/api/kmi_weather_radar_beta/frame/{filename}"
     name = "api:kmi_weather_radar_beta:frame"
-    requires_auth = True
+    requires_auth = False
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
@@ -156,12 +218,12 @@ class KmiRadarFrameView(HomeAssistantView):
 
 
 class KmiRadarCardView(HomeAssistantView):
-    url = "/kmi_weather_radar_beta/kmi-weather-radar-beta.js"
+    url = CARD_URL_PATH
     name = "kmi_weather_radar_beta:card"
     requires_auth = False
 
     async def get(self, request: web.Request) -> web.Response:
-        path = Path(__file__).parent / "frontend" / "kmi-weather-radar-beta.js"
+        path = Path(__file__).parent / "frontend" / CARD_FILENAME
         return web.FileResponse(
             path,
             headers={"Cache-Control": "no-cache"},
