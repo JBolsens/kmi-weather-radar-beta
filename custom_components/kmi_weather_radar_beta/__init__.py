@@ -23,7 +23,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-FILE_RE = re.compile(r"geocontours-[^"]+?\.pbf")
+FILE_RE = re.compile(r'geocontours-[^"\']+?\.pbf')
 SAFE_FILE_RE = re.compile(r"^geocontours-[0-9]{12}-[0-9]{12}\.pbf$")
 
 PLATFORMS: list[str] = []

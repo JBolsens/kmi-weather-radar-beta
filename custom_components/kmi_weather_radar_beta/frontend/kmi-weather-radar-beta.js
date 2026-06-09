@@ -11,24 +11,32 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       attribution: '© OpenStreetMap | © KMI | Leaflet',
       ...config,
     };
-    this.attachShadow({ mode: 'open' });
-    this._ready = false;
+
+    if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+
     this._frames = [];
     this._idx = 0;
     this._playing = true;
     this._timer = null;
     this._refreshTimer = null;
     this._latestSeen = null;
+    this._started = false;
+
     this.render();
   }
 
   set hass(hass) {
     this._hass = hass;
+    if (!this._started && this.shadowRoot) {
+      this._started = true;
+      this.start().catch((e) => this.showError(e));
+    }
   }
 
   disconnectedCallback() {
     clearInterval(this._timer);
     clearInterval(this._refreshTimer);
+    this._started = false;
   }
 
   getCardSize() {
@@ -63,12 +71,13 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
         </div>
       </ha-card>
     `;
-    this.init();
   }
 
-  async init() {
+  async start() {
     try {
       await this.loadLibraries();
+
+      if (this.map) this.map.remove();
       this.map = L.map(this.shadowRoot.getElementById('map'), {
         zoomControl: false,
         attributionControl: true,
@@ -112,9 +121,7 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       'https://www.meteo.be/services/web2016/radar_zoomable/dist/pbf.js',
       'https://www.meteo.be/services/web2016/radar_zoomable/dist/geobuf.js',
     ];
-    for (const src of scripts) {
-      await this.loadScript(src);
-    }
+    for (const src of scripts) await this.loadScript(src);
   }
 
   loadScript(src) {
@@ -129,12 +136,27 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     });
   }
 
-  api(path) {
-    return path;
+  authHeaders() {
+    const token =
+      this._hass?.auth?.data?.access_token ||
+      this._hass?.connection?.options?.auth?.data?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  async fetchApi(url, options = {}) {
+    return fetch(url, {
+      ...options,
+      cache: 'no-store',
+      headers: {
+        ...(options.headers || {}),
+        ...this.authHeaders(),
+      },
+    });
   }
 
   async loadFrames(forceLatest = false) {
-    const res = await fetch(this.api(`/api/kmi_weather_radar_beta/files?max=${Number(this.config.max_frames)}&cache=${Date.now()}`), { cache: 'no-store' });
+    if (!this._hass) throw new Error('Home Assistant context ontbreekt');
+    const res = await this.fetchApi(`/api/kmi_weather_radar_beta/files?max=${Number(this.config.max_frames)}&cache=${Date.now()}`);
     if (!res.ok) throw new Error(`files API ${res.status}`);
     const data = await res.json();
     const newFrames = (data.files || []).slice().reverse();
@@ -156,7 +178,7 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     if (!this._frames.length) return;
     this._idx = (newIdx + this._frames.length) % this._frames.length;
     const file = this._frames[this._idx];
-    const res = await fetch(this.api(`/api/kmi_weather_radar_beta/frame/${encodeURIComponent(file)}?cache=${Date.now()}`), { cache: 'no-store' });
+    const res = await this.fetchApi(`/api/kmi_weather_radar_beta/frame/${encodeURIComponent(file)}?cache=${Date.now()}`);
     if (!res.ok) throw new Error(`${file} ${res.status}`);
     const buffer = await res.arrayBuffer();
     const geojson = geobuf.decode(new Pbf(new Uint8Array(buffer)));
