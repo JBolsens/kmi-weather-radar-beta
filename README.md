@@ -39,6 +39,8 @@ center:
   - 51.0
   - 4.5
 zoom: 8
+update_interval: 120
+animation_interval: 0.7
 ```
 
 ## Optional card options
@@ -50,9 +52,11 @@ center:
   - 51.0
   - 4.5
 zoom: 8
+update_interval: 120
+animation_interval: 0.7
 max_frames: 40
-frame_interval: 700
-refresh_interval: 120000
+frame_interval: 0.7
+refresh_interval: 120
 ```
 
 ## Notes
