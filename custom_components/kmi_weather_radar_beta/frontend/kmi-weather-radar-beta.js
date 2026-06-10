@@ -5,8 +5,8 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       center: [51.0, 4.5],
       zoom: 8,
       max_frames: 40,
-      frame_interval: 700,
-      refresh_interval: 120000,
+      animation_interval: 0.7,
+      refresh_interval: 120,
       tile_url: 'https://tile.meteo.be/styles/Light-v10-nl/{z}/{x}/{y}.png',
       attribution: '© OpenStreetMap | © KMI | Leaflet',
       ...config,
@@ -43,20 +43,35 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     return 6;
   }
 
+  secondsToMs(value, fallbackSeconds) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n * 1000 : fallbackSeconds * 1000;
+  }
+
+  animationIntervalMs() {
+    return this.secondsToMs(this.config.animation_interval, 0.7);
+  }
+
+  refreshIntervalMs() {
+    // update_interval is kept as a backwards-compatible alias.
+    return this.secondsToMs(this.config.refresh_interval ?? this.config.update_interval, 120);
+  }
+
   render() {
     this.shadowRoot.innerHTML = `
       <link rel="stylesheet" href="https://www.meteo.be/services/web2016/radar_zoomable/dist/leaflet-1.9.4/leaflet.css">
       <style>
         :host{display:block}
         ha-card{overflow:hidden}
-        #wrap{position:relative;height:${this.config.height};background:#eef2f3;overflow:hidden}
-        #map{height:100%;width:100%}
-        .bar{position:absolute;left:10px;right:10px;bottom:10px;z-index:999;background:rgba(0,0,0,.60);color:white;padding:6px 10px;border-radius:10px;font-family:var(--primary-font-family, sans-serif);font-size:13px;display:grid;grid-template-columns:auto auto minmax(70px,1fr) 125px;align-items:center;gap:7px;box-sizing:border-box}
+        #wrap{position:relative;height:${this.config.height};background:#eef2f3;overflow:hidden;isolation:isolate}
+        #map{height:100%;width:100%;z-index:0}
+        .bar{position:absolute;left:10px;right:10px;bottom:10px;z-index:20;background:rgba(0,0,0,.60);color:white;padding:6px 10px;border-radius:10px;font-family:var(--primary-font-family, sans-serif);font-size:13px;display:grid;grid-template-columns:auto auto minmax(70px,1fr) 125px;align-items:center;gap:7px;box-sizing:border-box}
         button{height:30px;min-width:34px;width:auto;background:#fff;border:0;border-radius:7px;font-size:14px;cursor:pointer;padding:3px 7px;line-height:1;color:#111}
         #time{text-align:right;white-space:nowrap;font-size:13px;font-weight:600;color:white;padding-right:8px}
         input[type=range]{width:100%;min-width:0;accent-color:#1e88e5}
-        .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.75)}
-        .error{position:absolute;top:10px;left:10px;right:10px;z-index:1000;background:rgba(180,0,0,.85);color:white;padding:8px 10px;border-radius:8px;font-size:13px;display:none}
+        .leaflet-pane,.leaflet-top,.leaflet-bottom{z-index:1}
+        .leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.72);margin-bottom:-2px;z-index:5}
+        .error{position:absolute;top:10px;left:10px;right:10px;z-index:30;background:rgba(180,0,0,.85);color:white;padding:8px 10px;border-radius:8px;font-size:13px;display:none}
       </style>
       <ha-card>
         <div id="wrap">
@@ -65,8 +80,8 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
           <div class="bar">
             <button id="rew" title="Previous frame">⏪</button>
             <button id="play" title="Play/Pause">⏸</button>
-            <input id="slider" type="range" min="0" max="0" value="0">
-            <span id="time">laden…</span>
+            <input id="slider" type="range" min="0" max="0" value="0" aria-label="Radar timeline">
+            <span id="time">Loading…</span>
           </div>
         </div>
       </ha-card>
@@ -107,11 +122,11 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       this.startTimer();
       this._refreshTimer = setInterval(() => {
         this.loadFrames(false).catch((e) => this.showError(e));
-      }, Number(this.config.refresh_interval));
+      }, this.refreshIntervalMs());
     } catch (e) {
       this.showError(e);
       const timeEl = this.shadowRoot.getElementById('time');
-      if (timeEl) timeEl.textContent = 'fout laden';
+      if (timeEl) timeEl.textContent = 'Load failed';
     }
   }
 
@@ -131,7 +146,7 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       const script = document.createElement('script');
       script.src = src;
       script.onload = resolve;
-      script.onerror = () => reject(new Error(`Kan script niet laden: ${src}`));
+      script.onerror = () => reject(new Error(`Could not load script: ${src}`));
       document.head.appendChild(script);
     });
   }
@@ -155,12 +170,12 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
   }
 
   async loadFrames(forceLatest = false) {
-    if (!this._hass) throw new Error('Home Assistant context ontbreekt');
+    if (!this._hass) throw new Error('Home Assistant context is missing');
     const res = await this.fetchApi(`/api/kmi_weather_radar_beta/files?max=${Number(this.config.max_frames)}&cache=${Date.now()}`);
-    if (!res.ok) throw new Error(`files API ${res.status}`);
+    if (!res.ok) throw new Error(`Files API ${res.status}`);
     const data = await res.json();
     const newFrames = (data.files || []).slice().reverse();
-    if (!newFrames.length) throw new Error('Geen radarframes ontvangen');
+    if (!newFrames.length) throw new Error('No radar frames received');
     const newLatest = newFrames[newFrames.length - 1];
 
     if (!this._frames.length || newLatest !== this._latestSeen) {
@@ -190,7 +205,7 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
         const v = Number(f.properties.value || 0);
         return { stroke: false, fillColor: this.colorFor(v), fillOpacity: 0.68 };
       },
-      onEachFeature: (f, l) => l.bindTooltip(`waarde: ${f.properties.value} mm/u`),
+      onEachFeature: (f, l) => l.bindTooltip(`Value: ${f.properties.value} mm/h`),
     }).addTo(this.map);
 
     this.slider.value = this._idx;
@@ -202,7 +217,7 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     clearInterval(this._timer);
     this._timer = setInterval(() => {
       this.showFrame(this._idx + 1).catch((e) => this.showError(e));
-    }, Number(this.config.frame_interval));
+    }, this.animationIntervalMs());
   }
 
   togglePlay() {
