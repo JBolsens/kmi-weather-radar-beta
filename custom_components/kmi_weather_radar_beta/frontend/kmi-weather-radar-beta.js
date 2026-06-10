@@ -23,6 +23,8 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     this._started = false;
     this._resizeObserver = null;
     this._loadingFrame = false;
+    this._windowResizeHandler = null;
+    this._tileLayer = null;
 
     this.render();
   }
@@ -39,6 +41,8 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     this.stopAnimation();
     clearInterval(this._refreshTimer);
     if (this._resizeObserver) this._resizeObserver.disconnect();
+    if (this._windowResizeHandler) window.removeEventListener('resize', this._windowResizeHandler);
+    this._windowResizeHandler = null;
     this._started = false;
   }
 
@@ -88,15 +92,21 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       if (this.map) this.map.remove();
 
       const mapElement = this.shadowRoot.getElementById('map');
+      await this.waitForUsableMapSize(mapElement);
       this.map = L.map(mapElement, {
         zoomControl: false,
         attributionControl: true,
       }).setView(this.config.center, this.config.zoom);
 
-      L.tileLayer(this.config.tile_url, {
+      this._tileLayer = L.tileLayer(this.config.tile_url, {
         maxZoom: 12,
         attribution: this.config.attribution,
+        keepBuffer: 4,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
       }).addTo(this.map);
+
+      this._tileLayer.on('tileerror', (event) => this.retryTile(event));
 
       this.slider = this.shadowRoot.getElementById('slider');
       this.playBtn = this.shadowRoot.getElementById('play');
@@ -129,25 +139,74 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
     }
   }
 
+  waitForUsableMapSize(element) {
+    const minWidth = 120;
+    const minHeight = 120;
+    const started = Date.now();
+
+    return new Promise((resolve) => {
+      const check = () => {
+        const rect = element?.getBoundingClientRect?.();
+        if ((rect?.width >= minWidth && rect?.height >= minHeight) || Date.now() - started > 2000) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      check();
+    });
+  }
+
   installResizeHandling() {
     const wrap = this.shadowRoot.getElementById('wrap');
-    const invalidate = () => {
-      if (!this.map) return;
-      requestAnimationFrame(() => {
-        this.map.invalidateSize(false);
-        setTimeout(() => this.map?.invalidateSize(false), 250);
-      });
-    };
+    const mapElement = this.shadowRoot.getElementById('map');
+
+    const invalidate = () => this.scheduleMapInvalidate();
 
     this.map.whenReady(invalidate);
-    setTimeout(invalidate, 0);
-    setTimeout(invalidate, 500);
+    [0, 100, 300, 700, 1500, 3000].forEach((delay) => setTimeout(invalidate, delay));
 
-    if ('ResizeObserver' in window && wrap) {
+    if ('ResizeObserver' in window) {
       if (this._resizeObserver) this._resizeObserver.disconnect();
       this._resizeObserver = new ResizeObserver(invalidate);
-      this._resizeObserver.observe(wrap);
+      if (wrap) this._resizeObserver.observe(wrap);
+      if (mapElement) this._resizeObserver.observe(mapElement);
     }
+
+    if (this._windowResizeHandler) window.removeEventListener('resize', this._windowResizeHandler);
+    this._windowResizeHandler = invalidate;
+    window.addEventListener('resize', this._windowResizeHandler);
+
+    // Home Assistant sometimes finishes card layout after the custom element is already rendered.
+    // These events catch most view/tab/edit-mode transitions where Leaflet otherwise keeps stale tile bounds.
+    ['ll-rebuild', 'location-changed', 'visibilitychange'].forEach((eventName) => {
+      document.addEventListener(eventName, invalidate, { passive: true });
+      setTimeout(() => document.removeEventListener(eventName, invalidate), 30000);
+    });
+  }
+
+  scheduleMapInvalidate() {
+    if (!this.map) return;
+    requestAnimationFrame(() => {
+      this.map?.invalidateSize(false);
+      setTimeout(() => this.map?.invalidateSize(false), 100);
+      setTimeout(() => this.map?.invalidateSize(false), 350);
+    });
+  }
+
+  retryTile(event) {
+    const tile = event?.tile;
+    if (!tile || !tile.src) return;
+
+    const retries = Number(tile.dataset.retryCount || 0);
+    if (retries >= 3) return;
+    tile.dataset.retryCount = String(retries + 1);
+
+    const separator = tile.src.includes('?') ? '&' : '?';
+    const cleanSrc = tile.src.replace(/([?&])_kmi_retry=\d+/g, '');
+    setTimeout(() => {
+      tile.src = `${cleanSrc}${separator}_kmi_retry=${Date.now()}`;
+    }, 400 * (retries + 1));
   }
 
   async loadLibraries() {
@@ -243,9 +302,11 @@ class KmiWeatherRadarBetaCard extends HTMLElement {
       this.slider.value = this._idx;
       this.timeEl.textContent = this.fileToLabel(file);
       this.hideError();
-      this.map?.invalidateSize(false);
+      this.scheduleMapInvalidate();
     } finally {
       this._loadingFrame = false;
+    this._windowResizeHandler = null;
+    this._tileLayer = null;
     }
   }
 

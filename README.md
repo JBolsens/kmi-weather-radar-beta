@@ -74,3 +74,10 @@ Attribution is shown on the card for OpenStreetMap, KMI and Leaflet.
 ## Brand icon
 
 The included icon is an original radar/weather icon made for this project. It is not the official KMI logo.
+
+
+## Troubleshooting
+
+### Map tiles keep missing until refresh
+
+Version 0.1.5 adds delayed Leaflet size invalidation, resize observation and tile retry handling. If you still see missing base-map tiles, clear the browser cache or reload the Lovelace resource after updating.
