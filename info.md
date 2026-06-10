@@ -1,10 +1,15 @@
-Animated Belgian KMI/RMI beta precipitation radar for Home Assistant.
+# KMI Weather Radar Beta
 
-After installation and restart, add the integration from Devices & services. The dashboard resource is registered automatically in storage-mode Lovelace dashboards. YAML-mode users may need to add `/kmi_weather_radar_beta/kmi-weather-radar-beta.js` manually as a JavaScript module.
-
-Timing options use seconds:
+Animated Home Assistant dashboard card for the Belgian KMI/RMI beta precipitation radar.
 
 ```yaml
+type: custom:kmi-weather-radar-beta
+height: 500px
+center:
+  - 51.0
+  - 4.5
+zoom: 8
 refresh_interval: 120
 animation_interval: 0.7
+max_frames: 40
 ```

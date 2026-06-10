@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import web
+from aiohttp.client_exceptions import ClientResponseError
 
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
@@ -173,9 +174,20 @@ async def _fetch_frame(hass: HomeAssistant, filename: str) -> bytes:
         "Cache-Control": "no-cache, no-store, max-age=0",
         "Pragma": "no-cache",
     }
-    async with session.get(url, headers=headers) as resp:
-        resp.raise_for_status()
-        data = await resp.read()
+
+    try:
+        async with session.get(url, headers=headers) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
+    except ClientResponseError as err:
+        # KMI occasionally replaces nowcast frames while the frontend still has
+        # the previous files list. Return a clear 404 and force a files refresh
+        # on the next request instead of surfacing a generic 500 in the card.
+        if err.status in (404, 500):
+            store["files_updated_at"] = 0.0
+            store["frames"].pop(filename, None)
+            raise web.HTTPNotFound(text=f"Radar frame no longer available: {filename}") from err
+        raise
 
     store["frames"][filename] = data
     return data

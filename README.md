@@ -11,8 +11,7 @@ This HACS custom **integration** provides:
 - a Home Assistant backend proxy for KMI radar data, avoiding browser CORS issues;
 - a bundled Lovelace dashboard card served by the integration;
 - automatic Lovelace resource registration in storage-mode dashboards;
-- animated radar frames, play/pause, rewind, timeline slider, local Belgian time and attribution;
-- configurable refresh and animation intervals, in seconds.
+- animated radar frames, play/pause, rewind, timeline slider, local Belgian time and attribution.
 
 ## Installation with HACS
 
@@ -51,18 +50,20 @@ max_frames: 40
 
 ## Card options
 
-| Option | Default | Unit | Description |
-| --- | ---: | --- | --- |
-| `height` | `500px` | CSS size | Card height. |
-| `center` | `[51.0, 4.5]` | latitude/longitude | Initial map center. |
-| `zoom` | `8` | Leaflet zoom | Initial zoom level. |
-| `max_frames` | `40` | frames | Maximum number of radar frames requested from the backend. |
-| `refresh_interval` | `120` | seconds | How often the card asks Home Assistant for newly available radar frames. |
-| `animation_interval` | `0.7` | seconds | Delay between animation frames. |
-| `tile_url` | KMI light map | URL template | Optional Leaflet tile URL template. |
-| `attribution` | `© OpenStreetMap \| © KMI \| Leaflet` | text | Map attribution text. |
+| Option | Default | Description |
+| --- | --- | --- |
+| `height` | `500px` | Card height. |
+| `center` | `[51.0, 4.5]` | Initial map center. |
+| `zoom` | `8` | Initial Leaflet zoom level. |
+| `refresh_interval` | `120` | How often the card checks for a new KMI frame list, in seconds. |
+| `animation_interval` | `0.7` | Time between animation frames, in seconds. |
+| `max_frames` | `40` | Maximum number of radar frames to request from the backend. |
+| `tile_url` | KMI light map | Leaflet tile URL template. |
+| `attribution` | `© OpenStreetMap | © KMI | Leaflet` | Attribution shown by Leaflet. |
 
-`update_interval` is accepted as a backwards-compatible alias for `refresh_interval`, but `refresh_interval` is preferred. The old `frame_interval` option has been removed; use `animation_interval` instead.
+`update_interval` is accepted as a backwards-compatible alias for `refresh_interval`, but `refresh_interval` is preferred.
+
+`frame_interval` was removed. Use `animation_interval` instead.
 
 ## Notes
 
